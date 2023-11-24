@@ -32,10 +32,13 @@ func main() {
 				if update.Header.Type == syscall.RTM_NEWLINK { // ip link add
 					switch update.Link.Type() {
 					case "veth":
-						fmt.Println("New interface veth added:", update.Link.Attrs().Name)
+						fmt.Println("New interface veth type added:", update.Link.Attrs().Name)
 						seen[update.Link.Attrs().Name] = true
 					case "dummy":
-						fmt.Println("New interface dummy added:", update.Link.Attrs().Name)
+						fmt.Println("New interface dummy type added:", update.Link.Attrs().Name)
+						seen[update.Link.Attrs().Name] = true
+					default:
+						fmt.Print("New interface added:", update.Link.Attrs().Name)
 						seen[update.Link.Attrs().Name] = true
 						// add any other interface types here
 					}
