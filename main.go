@@ -17,15 +17,29 @@ func main() {
 		fmt.Println("Error:", err)
 		return
 	}
+	fmt.Println("Listening for link updates")
+	seen := make(map[string]bool)
 
 	for {
 		select {
 		case update := <-ch:
-			switch update.Header.Type {
-			case syscall.RTM_NEWLINK:
-				fmt.Println("New interface added:", update.Link.Attrs().Name)
-			case syscall.RTM_DELLINK:
-				fmt.Println("Interface deleted:", update.Link.Attrs().Name)
+			if update.Header.Type == syscall.RTM_DELLINK {
+				fmt.Println("Interface removed:", update.Link.Attrs().Name)
+				delete(seen, update.Link.Attrs().Name)
+			}
+			_, exists := seen[update.Link.Attrs().Name]
+			if !exists {
+				if update.Header.Type == syscall.RTM_NEWLINK { // ip link add
+					switch update.Link.Type() {
+					case "veth":
+						fmt.Println("New interface veth added:", update.Link.Attrs().Name)
+						seen[update.Link.Attrs().Name] = true
+					case "dummy":
+						fmt.Println("New interface dummy added:", update.Link.Attrs().Name)
+						seen[update.Link.Attrs().Name] = true
+						// add any other interface types here
+					}
+				}
 			}
 		}
 	}
