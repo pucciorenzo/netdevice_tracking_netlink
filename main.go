@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// Create a channel to receive notifications
-	ch := make(chan netlink.LinkUpdate) // change name to chLink
+	chLink := make(chan netlink.LinkUpdate)
 	done := make(chan struct{})
 
 	chAddr := make(chan netlink.AddrUpdate)
@@ -23,12 +23,12 @@ func main() {
 	}
 
 	// Subscribe to the link updates
-	if err := netlink.LinkSubscribe(ch, done); err != nil {
+	if err := netlink.LinkSubscribe(chLink, done); err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
-	fmt.Println("Listening for link updates")
-	// Create a map to keep track of all existing interfaces
+	newlyCreated := make(map[string]bool)
+	// Create a map to keep track of all interfaces
 	interfaces := make(map[string]bool)
 	links, err := netlink.LinkList()
 	if err != nil {
@@ -38,41 +38,40 @@ func main() {
 	for _, link := range links {
 		interfaces[link.Attrs().Name] = true
 	}
-
+	fmt.Println("Monitoring started. Press Ctrl+C to stop it.")
 	for {
 		select {
-		case update := <-ch: // change name to updateLink
-			if update.Header.Type == syscall.RTM_DELLINK { // ip link del
-				fmt.Println("Interface removed:", update.Link.Attrs().Name)
-				delete(interfaces, update.Link.Attrs().Name)
-				continue
+		case updateLink := <-chLink:
+			if updateLink.Header.Type == syscall.RTM_DELLINK { // ip link del
+				fmt.Println("Interface removed:", updateLink.Link.Attrs().Name)
+				delete(interfaces, updateLink.Link.Attrs().Name)
+				delete(newlyCreated, updateLink.Link.Attrs().Name)
 			}
-			_, exists := interfaces[update.Link.Attrs().Name]
-			if !exists && update.Header.Type == syscall.RTM_NEWLINK { // ip link add
-				switch update.Link.Type() {
+			_, exists := interfaces[updateLink.Link.Attrs().Name]
+			if !exists && updateLink.Header.Type == syscall.RTM_NEWLINK { // ip link add
+				switch updateLink.Link.Type() {
 				case "veth":
-					fmt.Println("New interface veth type added:", update.Link.Attrs().Name)
-					interfaces[update.Link.Attrs().Name] = true
+					fmt.Println("New veth interface added:", updateLink.Link.Attrs().Name)
 				case "dummy":
-					fmt.Println("New interface dummy type added:", update.Link.Attrs().Name)
-					interfaces[update.Link.Attrs().Name] = true
+					fmt.Println("New dummy interface added:", updateLink.Link.Attrs().Name)
 				default:
-					fmt.Println("New interface added:", update.Link.Attrs().Name)
-					interfaces[update.Link.Attrs().Name] = true
-					// add any other interface types here
+					fmt.Println("New interface added:", updateLink.Link.Attrs().Name)
 				}
-			} else if exists && update.Header.Type == syscall.RTM_NEWLINK { // ip link set
-				if update.Link.Attrs().Flags&net.FlagUp != 0 {
-					fmt.Println("Interface up:", update.Link.Attrs().Name)
-				} else {
-					fmt.Println("Interface down:", update.Link.Attrs().Name)
+				interfaces[updateLink.Link.Attrs().Name] = true
+				newlyCreated[updateLink.Link.Attrs().Name] = true
+			} else if updateLink.Header.Type == syscall.RTM_NEWLINK { // ip link set
+				if updateLink.Link.Attrs().Flags&net.FlagUp != 0 {
+					fmt.Println("Interface", updateLink.Link.Attrs().Name, "is up")
+					delete(newlyCreated, updateLink.Link.Attrs().Name)
+				} else if !newlyCreated[updateLink.Link.Attrs().Name] {
+					fmt.Println("Interface", updateLink.Link.Attrs().Name, "is down")
 				}
 			}
 		case updateAddr := <-chAddr:
 			iface, err := net.InterfaceByIndex(updateAddr.LinkIndex)
 			if err != nil {
-				fmt.Println("Error:", err)
-				return
+				fmt.Println("Address (", updateAddr.LinkAddress.IP, ") removed from the deleted interface")
+				continue
 			}
 			switch updateAddr.NewAddr {
 			case true: // ip addr add
