@@ -11,10 +11,12 @@ import (
 func main() {
 	// Create a channel to receive notifications
 	chLink := make(chan netlink.LinkUpdate)
-	done := make(chan struct{})
+	doneLink := make(chan struct{})
+	defer close(doneLink)
 
 	chAddr := make(chan netlink.AddrUpdate)
 	doneAddr := make(chan struct{})
+	defer close(doneAddr)
 
 	// Subscribe to the address updates
 	if err := netlink.AddrSubscribe(chAddr, doneAddr); err != nil {
@@ -23,7 +25,7 @@ func main() {
 	}
 
 	// Subscribe to the link updates
-	if err := netlink.LinkSubscribe(chLink, done); err != nil {
+	if err := netlink.LinkSubscribe(chLink, doneLink); err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
