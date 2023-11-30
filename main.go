@@ -9,14 +9,20 @@ import (
 )
 
 func main() {
-	// Create a channel to receive notifications
+	// Create a channel to receive notifications for link changes
 	chLink := make(chan netlink.LinkUpdate)
 	doneLink := make(chan struct{})
 	defer close(doneLink)
 
+	// Create a channel to receive notifications for address changes
 	chAddr := make(chan netlink.AddrUpdate)
 	doneAddr := make(chan struct{})
 	defer close(doneAddr)
+
+	// Create a channel to receive notifications for route changes
+	chRoute := make(chan netlink.RouteUpdate)
+	doneRoute := make(chan struct{})
+	defer close(doneRoute)
 
 	// Subscribe to the address updates
 	if err := netlink.AddrSubscribe(chAddr, doneAddr); err != nil {
@@ -29,6 +35,13 @@ func main() {
 		fmt.Println("Error:", err)
 		return
 	}
+
+	// Subscribe to the route updates
+	if err := netlink.RouteSubscribe(chRoute, doneRoute); err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
 	newlyCreated := make(map[string]bool)
 	// Create a map to keep track of all interfaces
 	interfaces := make(map[string]bool)
@@ -81,6 +94,18 @@ func main() {
 			case false: // ip addr del
 				fmt.Println("Address (", updateAddr.LinkAddress.IP, ") removed from the interface:", iface.Name)
 			}
+		case updateRoute := <-chRoute:
+			switch updateRoute.Type {
+			case syscall.RTM_NEWROUTE: // ip route add or ip route change
+				fmt.Println("New route added:", updateRoute.Route.Dst)
+			case syscall.RTM_DELROUTE: // ip route del
+				fmt.Println("Route removed:", updateRoute.Route.Dst)
+			}
 		}
 	}
 }
+
+// func send(ch chan string, msg string) {
+// 	// Create a channel to receive notifications for link changes
+// 	//...
+// }
